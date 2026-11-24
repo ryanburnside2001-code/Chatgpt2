@@ -18,11 +18,146 @@
   <main>
     <section class="hero">
       <h2>Turn your ideas into content.</h2>
-      <p>Write original AI scripts, find the best moments in your videos, and export clips ready for social media.</p>
+      <p>Get your AI team to plan, build and check a website. Write original scripts, find the best moments in your videos, and export clips ready for social media.</p>
+      <nav class="hero-nav" aria-label="Sections">
+        <a href="#siteTeam">🤖 Website team</a>
+        <a href="#clipper">🎬 Video clipper</a>
+        <a href="#scriptTitle">✨ Script writer</a>
+      </nav>
+    </section>
+
+    <!-- AI website team -->
+    <section class="card workspace" id="siteTeam" aria-labelledby="teamTitle">
+      <div class="card-head">
+        <h3 id="teamTitle">🤖 AI Website Team</h3>
+        <span class="muted small">Plan → build → review → fix, until QA passes it</span>
+      </div>
+
+      <div class="workspace-grid">
+        <div class="team-form">
+          <label for="siteIdea">What website do you want?</label>
+          <textarea id="siteIdea" maxlength="2000" placeholder="A one-page site for my mobile dog grooming business in Leeds. I want people to call or text to book."></textarea>
+          <div class="two-col">
+            <div>
+              <label for="siteAudience">Who is it for? <span class="muted">(optional)</span></label>
+              <input id="siteAudience" maxlength="300" placeholder="Busy dog owners in Leeds">
+            </div>
+            <div>
+              <label for="siteLook">Look and feel</label>
+              <select id="siteLook">
+                <option value="auto">Let the strategist choose</option>
+                <option value="clean">Clean and modern</option>
+                <option value="bold">Bold and colourful</option>
+                <option value="dark">Dark and premium</option>
+                <option value="warm">Warm and friendly</option>
+                <option value="minimal">Minimal and editorial</option>
+              </select>
+            </div>
+          </div>
+          <label for="siteFacts">Real details to use <span class="muted">(optional)</span></label>
+          <textarea id="siteFacts" class="short" maxlength="4000" placeholder="Business name, phone, email, prices, opening hours, area served…"></textarea>
+          <p class="muted small">The team only uses facts you give here. Anything missing becomes an <code>[OWNER: …]</code> placeholder for you to fill in. Nothing is invented, and nothing is published.</p>
+
+          <span class="label">Your team <span class="muted">(choose an AI for each role)</span></span>
+          <div class="roster">
+            <div class="member">
+              <span class="member-icon" aria-hidden="true">🧭</span>
+              <div class="member-text"><strong>Strategist</strong><span>Plans the audience, offer, pages and style</span></div>
+              <select class="provider-select" id="roleStrategist" aria-label="AI for the strategist"></select>
+            </div>
+            <div class="member">
+              <span class="member-icon" aria-hidden="true">🛠️</span>
+              <div class="member-text"><strong>Web builder</strong><span>Builds the site and fixes what QA finds</span></div>
+              <select class="provider-select" id="roleBuilder" aria-label="AI for the web builder"></select>
+            </div>
+            <div class="member">
+              <span class="member-icon" aria-hidden="true">🔍</span>
+              <div class="member-text"><strong>QA reviewer</strong><span>Checks design, copy, SEO, accessibility and honesty</span></div>
+              <select class="provider-select" id="roleReviewer" aria-label="AI for the QA reviewer"></select>
+            </div>
+            <div class="member">
+              <span class="member-icon" aria-hidden="true">🎬</span>
+              <div class="member-text"><strong>Shorts producer</strong>
+                <label class="check"><input type="checkbox" id="sitePromo" checked> Write 3 promo Short scripts</label></div>
+              <select class="provider-select" id="roleShorts" aria-label="AI for the shorts producer"></select>
+            </div>
+            <div class="member">
+              <span class="member-icon" aria-hidden="true">🚀</span>
+              <div class="member-text"><strong>Publisher</strong><span>Packages the site for download. Never publishes without you.</span></div>
+              <span class="muted small member-note">No AI needed</span>
+            </div>
+          </div>
+          <p class="muted small">Tip: a different AI as the reviewer catches mistakes the builder can't see in its own work.</p>
+          <label for="siteRounds">How many times QA can send it back</label>
+          <select id="siteRounds">
+            <option value="1">Up to 1 fix round (cheapest)</option>
+            <option value="2" selected>Up to 2 fix rounds</option>
+            <option value="3">Up to 3 fix rounds (most polished)</option>
+          </select>
+          <button id="buildSiteBtn" type="button">Build my website</button>
+          <p class="status" id="siteStatus" aria-live="polite"></p>
+        </div>
+
+        <div class="team-activity">
+          <div class="label-row">
+            <span class="label">Team activity</span>
+            <select id="siteSelect" class="inline-select" aria-label="Your websites"><option value="">No websites yet</option></select>
+          </div>
+          <ol class="activity" id="siteActivity" aria-live="polite">
+            <li class="activity-empty muted">Describe a site and press <strong>Build my website</strong>. Each teammate's work shows up here as it happens.</li>
+          </ol>
+          <p class="notice" id="siteError" hidden></p>
+          <div class="button-row" id="siteRetryRow" hidden>
+            <button class="secondary" id="siteRetryBtn" type="button">Try again</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="site-result" id="siteResult" hidden>
+        <div class="card-head result-head">
+          <div>
+            <h3 id="siteName">Website</h3>
+            <span class="muted small" id="siteMeta"></span>
+          </div>
+          <div class="result-actions">
+            <div class="segmented" role="group" aria-label="Preview size">
+              <button type="button" class="seg active" data-view="desktop" aria-pressed="true">Desktop</button>
+              <button type="button" class="seg" data-view="phone" aria-pressed="false">Phone</button>
+            </div>
+            <a class="button secondary compact" id="siteOpen" target="_blank" rel="noopener">Open full page ↗</a>
+            <a class="button compact" id="siteDownload" download>⬇ Download .zip</a>
+          </div>
+        </div>
+        <div class="frame-wrap" id="frameWrap">
+          <iframe id="siteFrame" title="Website preview" sandbox="allow-scripts allow-forms allow-popups allow-modals"></iframe>
+        </div>
+
+        <div class="result-grid">
+          <div class="qa-report" id="qaReport" aria-live="polite"></div>
+          <div class="change-box">
+            <label for="siteChanges">Ask the team for changes</label>
+            <textarea id="siteChanges" class="short" maxlength="2000" placeholder="Make the hero darker, add a prices section with [OWNER] placeholders, and move the FAQ above contact."></textarea>
+            <div class="button-row">
+              <button id="siteReviseBtn" type="button">Send to the team</button>
+              <button class="secondary" id="siteFixBtn" type="button" hidden>Fix remaining issues</button>
+            </div>
+            <p class="status" id="reviseStatus" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <details class="doc" id="briefBox">
+          <summary>🧭 Strategist's brief</summary>
+          <pre id="briefOut"></pre>
+        </details>
+        <details class="doc" id="shortsBox" hidden>
+          <summary>🎬 Promo Short scripts</summary>
+          <pre id="shortsOut"></pre>
+        </details>
+      </div>
     </section>
 
     <!-- Video clipper workspace -->
-    <section class="card workspace" aria-labelledby="clipperTitle">
+    <section class="card workspace" id="clipper" aria-labelledby="clipperTitle">
       <div class="card-head">
         <h3 id="clipperTitle">🎬 Video Clipper</h3>
         <span class="muted small">Shortcuts: <kbd>I</kbd> set start · <kbd>O</kbd> set end · <kbd>P</kbd> preview selection</span>

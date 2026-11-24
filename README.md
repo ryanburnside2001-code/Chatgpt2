@@ -1,11 +1,20 @@
 # Remix Studio
 
-A local creator dashboard: write original short-video scripts with the AI provider of your choice, find the best moments in your videos, and export clips ready for TikTok, Reels and Shorts.
+A local creator dashboard: have an AI team plan, build and check websites for you, write original short-video scripts with the AI provider of your choice, find the best moments in your videos, and export clips ready for TikTok, Reels and Shorts.
 
 Everything runs on your own computer. Videos never leave your machine, and API keys stay in your `.env` file.
 
 ## Features
 
+- **AI Website Team.** Describe the site you want (plus any real details such as name, phone and prices) and a team of AI roles builds it:
+  1. **Strategist** writes a brief: audience, offer, call to action, page plan, style and an honest money assessment.
+  2. **Web builder** builds a single-file, responsive, SEO-ready `index.html` from the brief.
+  3. **QA reviewer** scores it against the brief and a strict checklist (design, copy, mobile, accessibility, SEO, honesty). Automatic checks back it up: a missing title, dead links, images without alt text, lorem ipsum or a cut-off page can't pass, whatever the AI says.
+  4. **Web builder** fixes everything QA found, and QA reviews again, up to 1-3 rounds, until it passes.
+  5. **Shorts producer** (optional) writes 3 promo YouTube Shorts scripts for the site.
+  6. **Publisher** packages a `.zip` (site, brief, QA report, publishing guide). It never publishes anything.
+
+  Pick a different AI for each role. A different model as reviewer catches mistakes the builder can't see in its own work. Preview the result at desktop or phone size, ask for changes in plain words, and download it. The team uses only facts you give it; anything missing becomes an `[OWNER: …]` placeholder.
 - **Video clipper with live preview.** Upload a video, scrub it in the browser, and set the clip's start and end from the playhead (keyboard: `I` start, `O` end, `P` preview selection).
 - **Loudest-moment finder.** Scans the audio track and suggests the loudest sections at your chosen clip length. Cheering, laughter, music drops and raised voices tend to be the moments worth clipping. Suggestions show on the timeline; click one to jump to it.
 - **Three export formats:**
@@ -61,8 +70,19 @@ The preview player plays whatever your browser supports: MP4 (H.264) and WebM wo
 | `POST` | `/api/clip` | `{job_id, start, duration, layout}`: start a render (`crop`, `blur` or `original`) |
 | `GET` | `/api/download/{id}` | Download a finished clip |
 | `POST` | `/api/script` | `{topic, style, duration, provider}`: generate a script |
+| `POST` | `/api/sites` | `{idea, audience, facts, look, strategist, builder, reviewer, shorts, promo, fix_rounds}`: start the website team |
+| `GET` | `/api/sites/{id}` | Team progress, brief, QA reports and promo scripts |
+| `POST` | `/api/sites/{id}/revise` | `{instructions}`: ask for changes. Empty fixes QA's open issues, or retries a failed build |
+| `GET` | `/api/sites/{id}/preview` | The generated page, served in a sandbox |
+| `GET` | `/api/sites/{id}/download` | `.zip` with the site, brief, QA report and publishing guide |
 
-When `APP_TOKEN` is set, send `Authorization: Bearer <token>`. The media and download routes also accept `?token=` so the video player and download links work.
+When `APP_TOKEN` is set, send `Authorization: Bearer <token>`. The media, preview and download routes also accept `?token=` so the video player, site preview and download links work.
+
+## Website quality and cost
+
+The team is only as good as the models you give it. The default models (`gpt-4o-mini`, `gemini-2.5-flash`) are cheap but plain at design. For the web builder and reviewer, set a stronger model in `.env` (for example `ANTHROPIC_MODEL` or `OPENAI_MODEL`).
+
+Each build makes roughly 3-8 AI calls: one brief, one build, one review per round, one fix per failed review, and one for the Shorts scripts. The build and fix calls are the large ones, because they send and return the whole page. Check your provider's pricing.
 
 ## Tests
 
@@ -78,6 +98,8 @@ The tests generate a short sample video with FFmpeg, so they cover real uploads,
 - Transcription, subtitles and AI voiceover.
 - A multi-track timeline editor.
 - OAuth social connections, auto-posting and scheduling.
+- Deploying websites. The publisher only packages a `.zip`; you choose where to publish it.
+- Multi-page websites and real photos. The team builds one-page sites with CSS and SVG artwork.
 - User accounts and payments.
 - Production hosting: scalable queues, rate limiting, quotas and isolation.
 

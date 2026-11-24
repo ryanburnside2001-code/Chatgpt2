@@ -3,6 +3,7 @@
 const MAX_CLIP = 180;
 const MAX_UPLOAD = 1024 * 1024 * 1024;
 const VIDEO_EXTS = ['.mp4', '.mov', '.mkv', '.webm'];
+const PROVIDER_NAMES = { openrouter: 'OpenRouter', openai: 'OpenAI', anthropic: 'Claude', gemini: 'Gemini' };
 
 const $ = (id) => document.getElementById(id);
 const state = {
@@ -102,7 +103,7 @@ async function loadHealth() {
 function renderHealth() {
   const h = state.health;
   const providers = h.providers || { openrouter: h.openrouter_configured };
-  const names = { openrouter: 'OpenRouter', openai: 'OpenAI', anthropic: 'Claude', gemini: 'Gemini' };
+  const names = PROVIDER_NAMES;
   const configured = Object.keys(providers).filter((p) => providers[p]);
 
   $('healthPills').replaceChildren(
@@ -117,12 +118,13 @@ function renderHealth() {
   );
 
   // Mark providers without keys so people don't pick one that will fail.
-  const select = $('provider');
-  for (const option of select.options) {
-    const ok = providers[option.value];
-    option.textContent = names[option.value] + (ok ? '' : ' (no key in .env)');
+  for (const select of [$('provider'), ...document.querySelectorAll('.provider-select')]) {
+    for (const option of select.options) {
+      const ok = providers[option.value];
+      option.textContent = names[option.value] + (ok ? '' : ' (no key in .env)');
+    }
+    if (!providers[select.value] && configured.length) select.value = configured[0];
   }
-  if (!providers[select.value] && configured.length) select.value = configured[0];
 
   $('tokenNotice').hidden = !(h.auth_required && !state.token);
 }
@@ -134,6 +136,7 @@ async function loadJobs() {
     state.jobs = await api('/api/jobs');
     renderJobs();
     renderLibrary();
+    syncSites();
     schedulePoll();
   } catch (e) {
     $('jobs').replaceChildren(make('p', { class: 'status error', text: e.message }));
@@ -150,7 +153,7 @@ function schedulePoll() {
 function renderJobs() {
   const root = $('jobs');
   if (!state.jobs.length) {
-    root.replaceChildren(make('p', { class: 'muted', text: 'Nothing here yet. Upload a video to get started.' }));
+    root.replaceChildren(make('p', { class: 'muted', text: 'Nothing here yet. Build a website or upload a video to get started.' }));
     return;
   }
   root.replaceChildren(...state.jobs.map(renderJob));
@@ -164,6 +167,9 @@ function renderJob(job) {
     if (job.duration) meta.push(fmtDuration(job.duration));
     if (job.width && job.height) meta.push(`${job.width}×${job.height}`);
     if (job.has_audio === false) meta.push('no audio');
+  } else if (job.kind === 'site') {
+    if (job.version) meta.push(`version ${job.version}`);
+    if (job.verdict) meta.push(job.verdict === 'PASS' ? 'QA passed' : `QA: ${job.open_issues || 0} open issue(s)`);
   } else {
     if (job.clip_duration) meta.push(`${fmtTime(job.start || 0)} + ${job.clip_duration.toFixed(1)}s`);
     if (job.layout) meta.push(LAYOUT_NAMES[job.layout] || job.layout);
@@ -174,6 +180,9 @@ function renderJob(job) {
   if (job.kind === 'upload') {
     actions.push(make('button', { class: 'secondary compact', type: 'button', text: 'Open in clipper', onclick: () => selectVideo(job.id, true) }));
   }
+  if (job.kind === 'site') {
+    actions.push(make('button', { class: 'secondary compact', type: 'button', text: 'Open in website team', onclick: () => openSite(job.id, true) }));
+  }
   if (job.status === 'completed' && job.output) {
     actions.push(make('a', { class: 'button compact', href: withToken(job.output), download: '', text: '⬇ Download' }));
   }
@@ -182,7 +191,7 @@ function renderJob(job) {
   }
 
   let progress = null;
-  if (job.status === 'processing') {
+  if (job.status === 'processing' && job.kind !== 'site') {
     progress = make('div', { class: 'progress' }, [make('div', { class: 'progress-bar' })]);
     progress.firstChild.style.width = (job.progress || 0) + '%';
   }
@@ -190,10 +199,10 @@ function renderJob(job) {
   return make('article', { class: 'job' }, [
     make('div', { class: 'job-top' }, [
       make('div', {}, [
-        make('div', { class: 'job-name', text: (job.kind === 'upload' ? '🎞 ' : '✂️ ') + (job.name || 'Video') }),
+        make('div', { class: 'job-name', text: ({ upload: '🎞 ', site: '🌐 ' }[job.kind] || '✂️ ') + (job.name || 'Video') }),
         make('div', { class: 'job-meta', text: meta.filter(Boolean).join(' · ') }),
       ]),
-      make('span', { class: 'badge ' + job.status, text: job.status === 'processing' ? `${job.progress || 0}%` : job.status }),
+      make('span', { class: 'badge ' + job.status, text: badgeText(job) }),
     ]),
     progress,
     job.error ? make('div', { class: 'job-error', text: job.error }) : null,
@@ -201,12 +210,18 @@ function renderJob(job) {
   ]);
 }
 
+function badgeText(job) {
+  if (job.status !== 'processing') return job.status;
+  return job.kind === 'site' ? 'working' : `${job.progress || 0}%`;
+}
+
 async function deleteJob(job) {
-  const what = job.kind === 'upload' ? 'this video and its highlight data' : 'this clip';
+  const what = { upload: 'this video and its highlight data', site: 'this website and its files' }[job.kind] || 'this clip';
   if (!confirm(`Delete ${what}? This can't be undone.`)) return;
   try {
     await api('/api/jobs/' + job.id, { method: 'DELETE' });
     if (state.current && state.current.id === job.id) clearPlayer();
+    if (team.site && team.site.id === job.id) closeSite();
     await loadJobs();
   } catch (e) {
     alert(e.message);
@@ -581,6 +596,278 @@ $('copyScriptBtn').addEventListener('click', async () => {
   setTimeout(() => { $('copyScriptBtn').textContent = 'Copy'; }, 1500);
 });
 
+// ---------------------------------------------------------------- AI website team
+
+const ROLE_INFO = {
+  strategist: ['🧭', 'Strategist'],
+  builder: ['🛠️', 'Web builder'],
+  reviewer: ['🔍', 'QA reviewer'],
+  shorts: ['🎬', 'Shorts producer'],
+  publisher: ['🚀', 'Publisher'],
+};
+const ROLE_SELECTS = { strategist: 'roleStrategist', builder: 'roleBuilder', reviewer: 'roleReviewer', shorts: 'roleShorts' };
+const team = { site: null, frameKey: '', opened: false, loading: false, wasBusy: false };
+
+function prefsGet() {
+  try { return JSON.parse(localStorage.getItem('remixTeam') || '{}') || {}; } catch { return {}; }
+}
+function prefsSave() {
+  const prefs = { rounds: $('siteRounds').value, promo: $('sitePromo').checked };
+  for (const [role, id] of Object.entries(ROLE_SELECTS)) prefs[role] = $(id).value;
+  try { localStorage.setItem('remixTeam', JSON.stringify(prefs)); } catch { /* storage blocked */ }
+}
+
+function initTeamForm() {
+  const prefs = prefsGet();
+  for (const [role, id] of Object.entries(ROLE_SELECTS)) {
+    const select = $(id);
+    select.replaceChildren(...Object.keys(PROVIDER_NAMES).map((p) => make('option', { value: p, text: PROVIDER_NAMES[p] })));
+    if (prefs[role] in PROVIDER_NAMES) select.value = prefs[role];
+    select.addEventListener('change', prefsSave);
+  }
+  if (['1', '2', '3'].includes(prefs.rounds)) $('siteRounds').value = prefs.rounds;
+  if (typeof prefs.promo === 'boolean') $('sitePromo').checked = prefs.promo;
+  $('roleShorts').disabled = !$('sitePromo').checked;
+  $('siteRounds').addEventListener('change', prefsSave);
+  $('sitePromo').addEventListener('change', () => { $('roleShorts').disabled = !$('sitePromo').checked; prefsSave(); });
+}
+
+function fmtSpan(startIso, endIso) {
+  const ms = new Date(endIso) - new Date(startIso);
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const s = Math.max(1, Math.round(ms / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+function syncSites() {
+  renderSiteSelect();
+  if (team.site) {
+    const listed = state.jobs.find((j) => j.id === team.site.id);
+    if (!listed) closeSite();
+    else if (team.site.status === 'processing' || listed.status !== team.site.status || listed.version !== team.site.version) refreshSite();
+  } else if (!team.opened) {
+    const newest = state.jobs.find((j) => j.kind === 'site');
+    if (newest) openSite(newest.id);
+  }
+  team.opened = true;
+}
+
+function renderSiteSelect() {
+  const sites = state.jobs.filter((j) => j.kind === 'site');
+  const select = $('siteSelect');
+  const current = team.site ? team.site.id : '';
+  select.replaceChildren(
+    make('option', { value: '', text: sites.length ? 'Your websites…' : 'No websites yet' }),
+    ...sites.map((j) => make('option', { value: j.id, text: (j.name || 'Website') + (j.version ? ` · v${j.version}` : '') })));
+  select.value = sites.some((j) => j.id === current) ? current : '';
+}
+
+async function openSite(id, scroll = false) {
+  try {
+    team.site = await api('/api/sites/' + id);
+    team.wasBusy = team.site.status === 'processing';
+    renderSite();
+    renderSiteSelect();
+    if (scroll) $('siteTeam').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    setStatus('siteStatus', e.message, true);
+  }
+}
+
+async function refreshSite() {
+  if (!team.site || team.loading) return;
+  team.loading = true;
+  try {
+    const fresh = await api('/api/sites/' + team.site.id);
+    if (team.site && team.site.id === fresh.id) {
+      team.site = fresh;
+      renderSite();
+    }
+  } catch { /* the next poll will retry */ } finally {
+    team.loading = false;
+  }
+}
+
+function closeSite() {
+  team.site = null;
+  team.frameKey = '';
+  $('siteFrame').removeAttribute('src');
+  renderSite();
+  renderSiteSelect();
+}
+
+function renderStep(step) {
+  const [icon, who] = ROLE_INFO[step.agent] || ['•', step.agent];
+  const classes = [step.status];
+  if (step.agent === 'reviewer' && step.status === 'done') classes.push(step.text.startsWith('PASS') ? 'pass' : 'fix');
+  let stateNode;
+  if (step.status === 'working') {
+    stateNode = make('span', { class: 'state' }, [make('span', { class: 'spinner', 'aria-hidden': 'true' }), ' working']);
+  } else if (step.status === 'failed') {
+    stateNode = make('span', { class: 'state', text: '✗ failed' });
+  } else {
+    stateNode = make('span', { class: 'state', text: '✓ ' + fmtSpan(step.started, step.finished) });
+  }
+  return make('li', { class: classes.join(' ') }, [
+    make('span', { class: 'icon', 'aria-hidden': 'true', text: icon }),
+    make('div', {}, [make('span', { class: 'who', text: who }), make('span', { class: 'what', text: step.text })]),
+    stateNode,
+  ]);
+}
+
+function renderQA(site) {
+  const root = $('qaReport');
+  const reviews = site.reviews || [];
+  const r = reviews[reviews.length - 1];
+  if (!r) {
+    root.replaceChildren(make('p', { class: 'muted', text: "QA hasn't reviewed this site yet." }));
+    return;
+  }
+  const parts = [make('h4', {}, [
+    '🔍 QA report',
+    make('span', { class: 'verdict ' + r.verdict.toLowerCase(), text: r.verdict }),
+    r.score != null ? make('span', { class: 'score', text: `${r.score}/100` }) : null,
+    make('span', { class: 'muted small', text: `round ${r.round} · version ${r.version}` }),
+  ])];
+  if (r.version !== site.version) {
+    parts.push(make('p', { class: 'notice', text: `This report is for version ${r.version}. Version ${site.version} hasn't been reviewed yet.` }));
+  }
+  if (r.summary) parts.push(make('p', { class: 'muted small', text: r.summary }));
+  const section = (title, items, ordered) => (items && items.length
+    ? [make('h5', { text: title }), make(ordered ? 'ol' : 'ul', {}, items.map((t) => make('li', { text: t })))]
+    : []);
+  parts.push(...section('Must fix', r.must_fix, true));
+  parts.push(...section('You need to supply before publishing', r.owner_must_supply));
+  parts.push(...section('Nice to have', r.nice_to_have));
+  if (r.checks && r.checks.length) {
+    parts.push(make('h5', { text: 'Automatic checks' }),
+      make('ul', { class: 'checks' }, r.checks.map((c) => make('li', { class: c.level, text: c.text }))));
+  }
+  if (reviews.length > 1) {
+    const history = reviews.map((x) => `v${x.version} ${x.verdict}${x.score != null ? ' ' + x.score : ''}`).join(' → ');
+    parts.push(make('p', { class: 'muted small', text: 'History: ' + history }));
+  }
+  root.replaceChildren(...parts);
+}
+
+function renderSite() {
+  const site = team.site;
+  const busy = Boolean(site && site.status === 'processing');
+  const list = $('siteActivity');
+  if (!site) {
+    list.replaceChildren(make('li', { class: 'activity-empty muted', text: "Describe a site and press Build my website. Each teammate's work shows up here as it happens." }));
+  } else {
+    const steps = site.steps || [];
+    const items = steps.map(renderStep);
+    if (busy && !steps.some((s) => s.status === 'working')) {
+      items.push(renderStep({ agent: 'strategist', status: 'working', text: 'Getting the team together…' }));
+    }
+    list.replaceChildren(...items);
+  }
+  $('siteError').hidden = !(site && site.error);
+  $('siteError').textContent = (site && site.error) || '';
+  $('siteRetryRow').hidden = !(site && site.status === 'failed' && !site.version);
+  if (!busy && team.wasBusy) {  // the team just finished: clear "working on it" messages
+    setStatus('siteStatus', '');
+    setStatus('reviseStatus', '');
+  }
+  team.wasBusy = busy;
+
+  const built = Boolean(site && site.version);
+  $('siteResult').hidden = !built;
+  if (!built) return;
+
+  $('siteName').textContent = site.name || 'Website';
+  const verdict = site.verdict === 'PASS' ? 'QA passed' : site.verdict ? `QA: ${site.open_issues || 0} open issue(s)` : 'not reviewed yet';
+  $('siteMeta').textContent = [`Version ${site.version}`, busy ? 'the team is working on a new version' : verdict,
+    fmtDate(site.finished || site.created)].filter(Boolean).join(' · ');
+  $('siteOpen').href = withToken(`${site.preview}?v=${site.version}`);
+  $('siteDownload').href = withToken(site.output);
+  const key = `${site.id}:${site.version}:${state.token}`;
+  if (team.frameKey !== key) {
+    $('siteFrame').src = withToken(`${site.preview}?v=${site.version}`);
+    team.frameKey = key;
+  }
+  renderQA(site);
+  $('briefOut').textContent = site.brief || '';
+  $('shortsBox').hidden = !site.shorts;
+  $('shortsOut').textContent = site.shorts || '';
+
+  $('siteReviseBtn').disabled = busy;
+  const openIssues = site.verdict === 'FIX' ? site.open_issues || 0 : 0;
+  $('siteFixBtn').hidden = busy || !openIssues;
+  $('siteFixBtn').textContent = `Fix remaining ${openIssues} issue${openIssues === 1 ? '' : 's'}`;
+  if (busy) setStatus('reviseStatus', 'The team is working on it. The preview updates when the new version is ready.');
+}
+
+async function startRevision(instructions, statusId) {
+  if (!team.site) return;
+  setStatus(statusId, 'Sending to the team…');
+  try {
+    await api(`/api/sites/${team.site.id}/revise`, { json: { instructions } });
+    if (instructions) $('siteChanges').value = '';
+    await openSite(team.site.id);
+    await loadJobs();
+  } catch (e) {
+    setStatus(statusId, e.message, true);
+  }
+}
+
+$('buildSiteBtn').addEventListener('click', async () => {
+  const idea = $('siteIdea').value.trim();
+  if (!idea) {
+    setStatus('siteStatus', 'Describe the website you want first.', true);
+    $('siteIdea').focus();
+    return;
+  }
+  const body = {
+    idea,
+    audience: $('siteAudience').value.trim(),
+    facts: $('siteFacts').value.trim(),
+    look: $('siteLook').value,
+    promo: $('sitePromo').checked,
+    fix_rounds: Number($('siteRounds').value),
+  };
+  for (const [role, id] of Object.entries(ROLE_SELECTS)) body[role] = $(id).value;
+  const button = $('buildSiteBtn');
+  button.disabled = true;
+  setStatus('siteStatus', 'Sending your request to the team…');
+  try {
+    const result = await api('/api/sites', { json: body });
+    setStatus('siteStatus', 'The team is on it. A full build usually takes a few minutes.');
+    await openSite(result.job_id);
+    await loadJobs();
+  } catch (e) {
+    setStatus('siteStatus', e.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('siteReviseBtn').addEventListener('click', () => {
+  const text = $('siteChanges').value.trim();
+  if (!text) {
+    setStatus('reviseStatus', 'Describe the changes you want first.', true);
+    $('siteChanges').focus();
+    return;
+  }
+  startRevision(text, 'reviseStatus');
+});
+$('siteFixBtn').addEventListener('click', () => startRevision('', 'reviseStatus'));
+$('siteRetryBtn').addEventListener('click', () => startRevision('', 'siteStatus'));
+$('siteSelect').addEventListener('change', (e) => (e.target.value ? openSite(e.target.value) : closeSite()));
+
+for (const button of document.querySelectorAll('.seg')) {
+  button.addEventListener('click', () => {
+    for (const other of document.querySelectorAll('.seg')) {
+      const on = other === button;
+      other.classList.toggle('active', on);
+      other.setAttribute('aria-pressed', String(on));
+    }
+    $('frameWrap').classList.toggle('phone', button.dataset.view === 'phone');
+  });
+}
+
 // ---------------------------------------------------------------- settings
 
 $('saveTokenBtn').addEventListener('click', async () => {
@@ -590,12 +877,14 @@ $('saveTokenBtn').addEventListener('click', async () => {
   if (state.health) renderHealth();
   await loadJobs();
   if (state.current) loadPlayerSource(withToken(state.current.media));
+  if (team.site) renderSite();
 });
 
 // ---------------------------------------------------------------- start
 
 state.token = storageGet('remixToken');
 $('token').value = state.token;
+initTeamForm();
 renderTimeline();
 loadHealth();
 loadJobs();
